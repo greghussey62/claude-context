@@ -14,8 +14,6 @@ Do this automatically without being asked.
 - Move Anthropic API key to server-side before any public deployment
 - Tech debt open: #19 (QZ Tray cert), #20–#21 (accessibility), #22 (archival)
 - Feature backlog open: #23, #32–#36 (#29 done; email issues #23 skipped; #24–#31, #38 done)
-- Add `SUPABASE_SERVICE_ROLE_KEY` to Vercel env vars to enable Admin → Users tab
-- Resend email receipt: add `RESEND_API_KEY` + `RECEIPT_FROM_EMAIL` to Vercel env vars to enable
 
 ---
 
@@ -75,6 +73,17 @@ This app runs on a physical retail machine. Hardware awareness matters:
 | Windows PC | Main workstation | — |
 
 **QZ Tray** is a local desktop app that bridges the browser to raw printer access. It must be running on the machine. Printer names are configured in Admin settings and stored in `localStorage`. Dry-run mode is available for preview without hardware.
+
+### Store Web Presence
+| Property | Value |
+|---|---|
+| Store website | `www.samirasupsacleboutique.com` |
+| App URL (current) | `consignment-store-psi.vercel.app` |
+| App URL (future) | `app.samirasupsacleboutique.com` → point to Vercel deployment |
+| Email receipts (current sender) | Resend default (`onboarding@resend.dev` or similar) |
+| Email receipts (future sender) | `receipts@samirasupsacleboutique.com` — requires domain verification in Resend |
+
+**Future domain work:** (1) Add `samirasupsacleboutique.com` as a verified domain in Resend to enable branded receipt sender. (2) Add a CNAME/A record in DNS to point `app.samirasupsacleboutique.com` to the Vercel deployment for a branded app URL.
 
 ---
 
@@ -246,9 +255,9 @@ These barcodes/scan codes drive the POS:
 | Declined items (DB table exists, no UI) | Schema only |
 | Deployment / CI pipeline | Auto-deploys from GitHub via Vercel; no manual deploy needed |
 | Consignor sale email notifications | Skipped (#23) — needs Resend API key wired to sale events |
-| Email receipts to customers | Done (#29) — Resend via `/api/send-receipt`; needs RESEND_API_KEY in Vercel |
+| Email receipts to customers | Done and active — RESEND_API_KEY configured in Vercel; receipts sending live |
 | Appointment confirmation email | Resend infrastructure in place — needs wiring to appointment insert |
-| User management in-app | Done — Admin → Users tab; needs SUPABASE_SERVICE_ROLE_KEY in Vercel |
+| User management in-app | Done and active — SUPABASE_SERVICE_ROLE_KEY configured in Vercel; Admin → Users tab fully operational |
 | Shopify product sync | Not built — push items to Shopify, webhook for online sales (#33) |
 | AI Shopify descriptions | Not built — Claude generates product descriptions for Shopify (#34) |
 | Offline POS mode | Deferred — requires IndexedDB + background sync queue (issue #16 closed) |
@@ -674,11 +683,13 @@ src/
 VITE_SUPABASE_URL           Supabase project URL
 VITE_SUPABASE_ANON_KEY      Supabase anon/publishable key
 VITE_ANTHROPIC_API_KEY      Claude API key (used client-side — private intranet only)
-RESEND_API_KEY              Resend transactional email key (server-side only — Vercel env var)
-RECEIPT_FROM_EMAIL          Sender address for email receipts (default: onboarding@resend.dev)
-SUPABASE_SERVICE_ROLE_KEY   Supabase service role key (server-side only — enables Admin → Users tab)
+RESEND_API_KEY              Resend transactional email key (server-side only) — ACTIVE in Vercel
+RECEIPT_FROM_EMAIL          Sender address for email receipts — ACTIVE in Vercel
+SUPABASE_SERVICE_ROLE_KEY   Supabase service role key (server-side only) — ACTIVE in Vercel
 ```
 VITE_ prefix vars are embedded in the browser bundle at build time. All others (no VITE_ prefix) are server-side only and safe for secrets.
+
+**Vercel env var status (as of 2026-05-15):** `RESEND_API_KEY`, `RECEIPT_FROM_EMAIL`, and `SUPABASE_SERVICE_ROLE_KEY` are all configured and active in Vercel production. Email receipts and Admin → Users tab are fully operational.
 
 ---
 
@@ -763,3 +774,4 @@ _Use this section to record significant decisions, changes, or context from each
 | 2026-05-13 | Added step 6 to Self-Update Protocol (copy CLAUDE.md to claude-context repo and push). Updated test-plan.html (97→114 tests: §13 Store Credit, §14 Appointments, email receipt, split tender, 1099, markdown rules, user management, role access). Updated staff-guide.html (9→11 sections: §6 Store Credit, §7 Appointments, split tender + email receipt in §1, sections renumbered). |
 | 2026-05-14 | Full AI voice intake rebuild (AIIntake.jsx + aiParse.js). New parsing rules: Designer→Item Type→Description→Size→Price→"Enter" field order. New Claude system prompt returns {designer, item_type, item_type_flagged, description, size, price, raw_input}. Real-time live parsing panel with color-coded field states (green/amber/gray/red). Session list with fade-out animation. 10 voice commands: Enter/Next, Clear last/Remove last/Undo, Submit all, Correct [field] [value], Repeat last, Pause/Resume listening, Full/Brief/No feedback, Test. Web Audio API tone system (10 distinct tones). Web Speech API readback with 3 modes (full/brief/none) stored in localStorage. Mute toggle stored in localStorage. Session warmup message. PAUSED banner overlay. Processing indicator tick + 5s/10s timeout handling. Item count milestones every 5 items. getLists() exported from aiParse.js for real-time parser. Contracts.jsx updated with onRemoveLast + onSubmitAll props. |
 | 2026-05-14 | Fixed real-time parsing panel designer/item_type preview. Added normStr(), matchDesigner(), matchItemType() helpers to AIIntake.jsx. matchDesigner tries 1–4 word prefixes against designer names + aliases with 60% coverage threshold to avoid false positives. matchItemType scans first 3 word positions so leading adjective/color words don't block item type detection. getLists() called on mic start and stored in listsRef (hits existing 4-min in-memory cache — no extra DB calls). Designer and item type fields now show actual matched names in green during speech instead of "listening…". |
+| 2026-05-15 | Vercel environment variables confirmed active: RESEND_API_KEY + RECEIPT_FROM_EMAIL (email receipts now live), SUPABASE_SERVICE_ROLE_KEY (Admin → Users tab fully operational). Documented store website (www.samirasupsacleboutique.com) and future domain work: verify domain in Resend for branded sender (receipts@samirasupsacleboutique.com), point app.samirasupsacleboutique.com to Vercel. Updated Known Gaps and Pending sections accordingly. |
