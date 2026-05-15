@@ -7,6 +7,8 @@ At the end of every session Claude Code must:
 4. Add a session log entry with date and summary
 5. Update Known Gaps if anything was resolved or added
 6. Copy the updated CLAUDE.md to `C:\claude-context\consignment-store-CLAUDE.md`, then commit and push that change in the claude-context repo
+7. Purge the jsDelivr CDN cache so the latest file is immediately available:
+   `curl https://purge.jsdelivr.net/gh/greghussey62/claude-context@main/consignment-store-CLAUDE.md`
 
 Do this automatically without being asked.
 
