@@ -6,8 +6,9 @@ At the end of every session Claude Code must:
 3. Add new routes, tables, or integrations created
 4. Add a session log entry with date and summary
 5. Update Known Gaps if anything was resolved or added. Then copy the updated CLAUDE.md to `C:\claude-context\consignment-store-CLAUDE.md`, commit, and push both repos to GitHub.
-6. After pushing CLAUDE.md to GitHub, immediately run this command to purge the CDN cache:
+6. After pushing CLAUDE.md to GitHub, run this command to purge the CDN cache:
    `curl "https://purge.jsdelivr.net/gh/greghussey62/claude-context@main/consignment-store-CLAUDE.md"`
+   Wait for it to return `{"status":"finished"}` before finishing the session.
 
 Do this automatically without being asked.
 
