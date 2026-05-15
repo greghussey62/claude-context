@@ -6,8 +6,10 @@ At the end of every session Claude Code must:
 3. Add new routes, tables, or integrations created
 4. Add a session log entry with date and summary
 5. Update Known Gaps if anything was resolved or added
-6. Copy the updated CLAUDE.md to `C:\claude-context\consignment-store-CLAUDE.md`, commit and push that change in the claude-context repo, then immediately purge the CDN cache so claude.ai can fetch the latest version:
+6. Copy the updated CLAUDE.md to `C:\claude-context\consignment-store-CLAUDE.md`, then commit and push that change in the claude-context repo
+7. After pushing CLAUDE.md to GitHub, run this command to immediately purge the CDN cache:
    `curl "https://purge.jsdelivr.net/gh/greghussey62/claude-context@main/consignment-store-CLAUDE.md"`
+   This ensures claude.ai always fetches the latest version when asked.
 
 Do this automatically without being asked.
 
