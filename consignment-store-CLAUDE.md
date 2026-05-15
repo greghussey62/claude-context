@@ -6,9 +6,8 @@ At the end of every session Claude Code must:
 3. Add new routes, tables, or integrations created
 4. Add a session log entry with date and summary
 5. Update Known Gaps if anything was resolved or added
-6. Copy the updated CLAUDE.md to `C:\claude-context\consignment-store-CLAUDE.md`, then commit and push that change in the claude-context repo
-7. Purge the jsDelivr CDN cache so the latest file is immediately available:
-   `curl https://purge.jsdelivr.net/gh/greghussey62/claude-context@main/consignment-store-CLAUDE.md`
+6. Copy the updated CLAUDE.md to `C:\claude-context\consignment-store-CLAUDE.md`, commit and push that change in the claude-context repo, then immediately purge the CDN cache so claude.ai can fetch the latest version:
+   `curl "https://purge.jsdelivr.net/gh/greghussey62/claude-context@main/consignment-store-CLAUDE.md"`
 
 Do this automatically without being asked.
 
@@ -17,6 +16,10 @@ Do this automatically without being asked.
 - Tech debt open: #19 (QZ Tray cert), #20–#21 (accessibility), #22 (archival)
 - Feature backlog open: #23, #32–#36 (#29 done; email issues #23 skipped; #24–#31, #38 done)
 - Re-run `supabase/schema.sql` in Supabase SQL editor to apply user_roles table extensions
+
+## CLAUDE.md Fetch URL (jsDelivr CDN)
+Use this URL to load the latest version of this file in claude.ai or any external tool:
+`https://cdn.jsdelivr.net/gh/greghussey62/claude-context@main/consignment-store-CLAUDE.md`
 
 ---
 
