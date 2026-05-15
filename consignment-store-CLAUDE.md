@@ -242,7 +242,11 @@ These barcodes/scan codes drive the POS:
 | In-app Help Guide (/help route, sidebar nav, search, 14 sections incl. Pull Items) | ✅ |
 | Printable manual test plan (public/test-plan.html, 97 tests, 12 sections) | ✅ |
 | Printable staff guide (public/staff-guide.html, quick ref, workflows, troubleshooting) | ✅ |
-| User management (Admin → Users tab — invite, role change, remove via service role API) | ✅ |
+| Three-tier user management (admin/manager/staff, full CRUD, lockout, suspend, welcome email) | ✅ |
+| User profile page (/profile — display name, change password, accessible from topbar menu) | ✅ |
+| Forgot password / reset password flow (/reset-password, Supabase email recovery) | ✅ |
+| Forced first-login password change (/change-password, force_password_change flag) | ✅ |
+| Account lockout (5 failed attempts → 30-min lock, api/auth-events.js, Admin can unlock) | ✅ |
 | Appointment scheduling from Contracts page + Dashboard 7-day widget | ✅ |
 | Appointment → Contract flow (pre-filled New Contract from appointment row) | ✅ |
 | Phone number formatting (src/lib/phone.js — all phone inputs app-wide) | ✅ |
@@ -258,7 +262,7 @@ These barcodes/scan codes drive the POS:
 | Consignor sale email notifications | Skipped (#23) — needs Resend API key wired to sale events |
 | Email receipts to customers | Done and active — RESEND_API_KEY configured in Vercel; receipts sending live |
 | Appointment confirmation email | Resend infrastructure in place — needs wiring to appointment insert |
-| User management in-app | Done and active — SUPABASE_SERVICE_ROLE_KEY configured in Vercel; Admin → Users tab fully operational |
+| User management in-app | Done and active — full three-tier system; SUPABASE_SERVICE_ROLE_KEY active in Vercel |
 | Shopify product sync | Not built — push items to Shopify, webhook for online sales (#33) |
 | AI Shopify descriptions | Not built — Claude generates product descriptions for Shopify (#34) |
 | Offline POS mode | Deferred — requires IndexedDB + background sync queue (issue #16 closed) |
@@ -607,16 +611,19 @@ src/
 
 ### Routing (App.jsx)
 - All routes under a single `<Layout>` wrapper
-- Public routes (no auth required): `/upload/:token`, `/display`, `/book`
-- All other routes require authentication via `RequireAuth` + `RoleProvider`
+- Public routes (no auth required): `/upload/:token`, `/display`, `/book`, `/reset-password`
+- Authenticated but NOT behind force-password-change check: `/change-password`, `/profile`
+- All other routes go through `CheckPasswordChange` wrapper — redirects to `/change-password` if `force_password_change = true`
 - No lazy loading currently
 
 ### Role-Based Access
 - `RoleProvider` (src/components/RoleContext.jsx) wraps all authenticated routes
-- `useRole()` hook returns `'manager'` | `'staff'`; defaults to `'manager'` if no DB row exists
-- Layout.jsx filters nav: staff see Dashboard, POS, Contracts, Inventory, Layaway only
-- Manager-only nav: Payouts, Reports, Sale History, Admin, Store Credit
-- New users default to staff; promote via `user_roles` table in Supabase
+- `useRole()` returns an object: `{ role, isAdmin, isManager, displayName, userId, userEmail, setDisplayName, loaded, forcePasswordChange }`
+- Three roles: `'admin'` | `'manager'` | `'staff'`; **no row in user_roles = owner account = admin** (do not break this)
+- `isAdmin`: role === 'admin' — `isManager`: role === 'admin' || 'manager' — all authenticated users have staff permissions
+- Layout.jsx nav: staff see Dashboard, POS, Contracts, Inventory, Layaway; manager+ add Payouts, Reports, Sale History, Store Credit, Admin; admin-only: Users + Permissions tabs within Admin
+- Admin → Users tab is the only place to manage users; Admin tab itself is visible to manager+
+- `setDisplayName(name)` exposed from context — call after saving a name so the nav bar updates immediately without reload
 
 ### Appointment Booking Pattern
 - Public-facing config that consignors need is stored in DB (`appointment_settings`), NOT localStorage — localStorage is device-local and unreachable from other browsers
@@ -708,6 +715,8 @@ VITE_ prefix vars are embedded in the browser bundle at build time. All others (
 - **Don't change the ZPL tag format** without checking the physical tag dimensions (3"×1.5", 203 DPI = 609×304 dots). The barcode height, font sizes, and field positions are calibrated to the label stock.
 - **Don't use `git add .` or `git add -A`** — the `.env.local` file contains real API keys and must not be committed.
 - **Don't break the reference implementation contract.** If in doubt about a business rule, check `consignment-store.html` — it is the authoritative source.
+- **Don't upsert `user_roles` without explicitly including the `role` column.** The table default is now `'staff'`, so an upsert that omits `role` will silently demote the owner account to Staff. Always specify the role, or use `update` + conditional `insert` (see Profile.jsx handleSaveName pattern).
+- **Don't use `update` alone when writing to `user_roles` for the owner account.** The owner has no row, so `update` silently touches nothing. Pattern: try `update`, check if 0 rows affected, then `insert` with `role='admin'`.
 
 ---
 
@@ -749,7 +758,8 @@ npm run test:watch # Watch mode
 | `src/lib/phone.js` | Phone formatting utilities (formatPhone, isValidPhone, digitsOnly) |
 | `src/styles/global.css` | All CSS variables and layout classes |
 | `api/send-receipt.js` | Vercel serverless — email receipts via Resend |
-| `api/admin-users.js` | Vercel serverless — user management via Supabase Admin API |
+| `api/admin-users.js` | Vercel serverless — full user management (admin role required) |
+| `api/auth-events.js` | Vercel serverless — public lockout tracking (no auth required) |
 | `public/test-plan.html` | Printable 97-test pre-launch manual test plan |
 | `public/staff-guide.html` | Printable staff operations guide |
 
@@ -777,3 +787,4 @@ _Use this section to record significant decisions, changes, or context from each
 | 2026-05-14 | Fixed real-time parsing panel designer/item_type preview. Added normStr(), matchDesigner(), matchItemType() helpers to AIIntake.jsx. matchDesigner tries 1–4 word prefixes against designer names + aliases with 60% coverage threshold to avoid false positives. matchItemType scans first 3 word positions so leading adjective/color words don't block item type detection. getLists() called on mic start and stored in listsRef (hits existing 4-min in-memory cache — no extra DB calls). Designer and item type fields now show actual matched names in green during speech instead of "listening…". |
 | 2026-05-15 | Vercel environment variables confirmed active: RESEND_API_KEY + RECEIPT_FROM_EMAIL (email receipts now live), SUPABASE_SERVICE_ROLE_KEY (Admin → Users tab fully operational). Documented store website (www.samirasupsacleboutique.com) and future domain work: verify domain in Resend for branded sender (receipts@samirasupsacleboutique.com), point app.samirasupsacleboutique.com to Vercel. Updated Known Gaps and Pending sections accordingly. |
 | 2026-05-15 | Full three-tier user management system. Roles: admin/manager/staff (hierarchy; no row = admin/owner). New: Admin → Users tab (create, role change, suspend/reactivate, force logout, unlock, remove; last-admin protection). Add User form: display name + email + role + temp password + strength meter + welcome email via Resend + force_password_change flag. Forced first-login password change flow (/change-password). Profile page (/profile — display name edit, change password). Forgot password (/reset-password — Supabase email recovery). Login: lockout check (5 failures → 30-min lock), suspension check. api/auth-events.js public endpoint for lockout tracking. Permissions tab (role/feature matrix). User menu in topbar (display name, role badge, My Profile). schema.sql extended: user_roles + display_name, status, force_password_change, failed_attempts, locked_until, created_at, updated_at; default role → 'staff'. ACTION REQUIRED: re-run schema.sql in Supabase. |
+| 2026-05-15 | Bug fixes post user management launch. (1) Inline ✏️ name edit added to Admin → Users tab rows. (2) Profile save name: fixed upsert-without-role bug that demoted owner account to Staff — now uses update + conditional insert with role='admin'. (3) RoleContext now exposes setDisplayName() so nav bar updates immediately after name save without page reload. INCIDENT: first buggy upsert deployed briefly and demoted the owner account to Staff — recovered by manually setting role='admin' in Supabase Table Editor. Root cause documented in What Not To Do. |
