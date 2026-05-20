@@ -10,9 +10,16 @@ At the end of every session Claude Code must:
    a. Commit and push CLAUDE.md in the consignment-store repo (private)
    b. Copy CLAUDE.md to `C:\claude-context\CLAUDE.md` and push to the claude-context repo (public — this is what claude.ai fetches)
    Note: the file is named CLAUDE.md (not consignment-store-CLAUDE.md) in the claude-context repo.
-7. After pushing to claude-context, run this command to purge the CDN cache:
+7. After pushing to claude-context, purge the CDN:
    `curl "https://purge.jsdelivr.net/gh/greghussey62/claude-context@main/CLAUDE.md"`
-   Wait for it to return `{"status":"finished"}` before finishing the session.
+
+   - If it returns `{"status":"finished"}`, done.
+   - If it returns `"throttled"`, wait 60 seconds and try once more.
+   - If still throttled after the retry, add a note to the Pending section:
+     `CDN purge pending — run manually before next session`
+     and move on. The jsDelivr throttle resets overnight, so the updated
+     CLAUDE.md will be visible to claude.ai tomorrow.
+   - Do NOT keep retrying beyond the single retry above.
 
 Do this automatically without being asked.
 
@@ -823,3 +830,4 @@ _Use this section to record significant decisions, changes, or context from each
 | 2026-05-15 | Bug fixes post user management launch. (1) Inline ✏️ name edit added to Admin → Users tab rows. (2) Profile save name: fixed upsert-without-role bug that demoted owner account to Staff — now uses update + conditional insert with role='admin'. (3) RoleContext now exposes setDisplayName() so nav bar updates immediately after name save without page reload. INCIDENT: first buggy upsert deployed briefly and demoted the owner account to Staff — recovered by manually setting role='admin' in Supabase Table Editor. Root cause documented in What Not To Do. |
 | 2026-05-20 | User ran `supabase/schema.sql` in Supabase SQL editor — user_roles table extensions (display_name, status, force_password_change, failed_attempts, locked_until, created_at, updated_at; default role → 'staff') now applied to production database. Removed schema re-run from Pending. |
 | 2026-05-20 | Three new features. (1) **Markdown Scanner Mode** rebuilt: Inventory toolbar 📉 button now opens overlay directly (no tier-picker modal). Tier selector lives inside overlay; scan input disabled until tier picked. Calculations always from `original_price` (falls back to `price` and saves it as `original_price` on first scan). New price rounded to whole dollar. Skip if `price` already equals computed value (mid tone + "Skip" speech + yellow). Success path: writes `price`, `original_price` (if null), `markdown_applied = true`, `needs_new_tag = false` (staff hand-updates physical tag); logs `audit_log` action `markdown` with from/to/original/tier/userId. Audio system added with `priceToWords()` helper — speaks new price as natural English ("one sixty", "seventy five", "one twenty five") via SpeechSynthesis at rate 0.9. Respects `intake_audio_enabled` localStorage mute. Session list persisted in `markdown.scanner.session` (date-scoped). "New Session" clears list but keeps tier. "Print Report" generates printable floor sheet. (2) **Bulk Tag Reprint** added to Admin → Data Management: lists items where `needs_new_tag = true`, filters by markdown-applied vs manually flagged + consignor + category, Print Selected / Print All via existing `printTags()` (ZPL/QZ Tray, max 40 batch). Post-print prompts "Mark as printed?" — if yes sets `tag_printed = true, needs_new_tag = false`. (3) **Database Health** cards added to Admin → Data Management: Photo Storage (count + MB estimate + purge old photos for sold/returned/pulled items, parses public URLs and removes from `item-photos` bucket); Database Summary (live counts per table, items grouped by status); Items Missing Photos (count + "View Items" → `/inventory?filter=nophotos`). Inventory page now reads `?filter=nophotos` URL param and applies a "Missing Photos" filter with a dismissable chip in the toolbar. Imports: Inventory.jsx now imports `useRole` + `logAudit`; Admin.jsx now imports `printTags`. Build clean, 171 tests pass. |
+| 2026-05-20 | Self-Update Protocol step 7 reworked to handle jsDelivr CDN throttling: if first purge returns `throttled`, wait 60s and retry once; if still throttled, add `CDN purge pending` to Pending section and move on (throttle resets overnight). No more unbounded retry loops. |
