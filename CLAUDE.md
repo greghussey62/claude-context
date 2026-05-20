@@ -206,6 +206,27 @@ These barcodes/scan codes drive the POS:
 - QR-based phone upload: store generates token → QR code → scan with phone → upload from camera
 - Token expires in **15 minutes**
 - Realtime subscription in EditItemModal picks up new photos immediately
+- **Purge old photos:** Admin → Data Management → Photo Storage card. Deletes Storage files + sets `items.photos = []` for items with status sold / returned / pulled. Estimate: 0.3 MB/photo. Record itself is preserved.
+
+### Markdown Scanner Mode
+- Inventory toolbar → 📉 Markdown button opens full-screen scanner overlay (replaces page, like Payout Pull)
+- Tier selector (20% Off / 50% Off) **inside** the overlay — scan input is disabled until a tier is chosen
+- Calculations always from `items.original_price` (treated as the never-marked-down baseline). If `original_price` is null on first scan, save the current `price` as `original_price` then mark down. New price is rounded to the nearest whole dollar (no cents).
+- Skip if `items.price` already equals the computed new price → mid-frequency tone + "Skip" speech + yellow flash, no DB write, no session entry.
+- On success: `price = newPrice, markdown_applied = true, needs_new_tag = false` (staff hand-updates the physical tag with a red sharpie). High beep + speaks the new price as words ("One sixty", "Seventy five", "One twenty five") via SpeechSynthesis at rate 0.9.
+- Every successful scan logs to `audit_log` with action `'markdown'`, `record_id = item_id`, and `details = { from_price, to_price, original_price, tier, markdown_applied_by }`.
+- Audio respects the same `intake_audio_enabled` localStorage key as AI intake (no beeps, no speech when muted).
+- Session list persists in localStorage key `markdown.scanner.session` (date-scoped; cleared when date changes). "New Session" wipes the list but keeps the tier. "Print Report" produces a floor sheet listing every marked-down item.
+
+### Database Health (Admin → Data Management)
+- Three live cards: **Photo Storage** (counts + estimated MB + purge button), **Database Summary** (rows per table, items grouped by status), **Items Missing Photos** ("View Items" → `/inventory?filter=nophotos`).
+- Purge old photos parses public URLs (`/item-photos/...`), batches deletes (80/call) to `supabase.storage.from('item-photos').remove(...)`, then sets `items.photos = []` for affected items.
+- Manager+ only (DataTab is already gated behind `isManager` in Admin.jsx).
+
+### Bulk Tag Reprint (Admin → Data Management)
+- Shows all items where `needs_new_tag = true`. Filters: markdown-applied vs manually flagged, plus consignor and category dropdowns.
+- Uses existing `printTags()` (ZPL via QZ Tray, max 40 per spool batch). Dry-run is honored.
+- After print, prompts "Mark as printed?" — if yes, sets `tag_printed = true` and `needs_new_tag = false` for the printed items.
 
 ---
 
@@ -260,11 +281,14 @@ These barcodes/scan codes drive the POS:
 | Appointment → Contract flow (pre-filled New Contract from appointment row) | ✅ |
 | Phone number formatting (src/lib/phone.js — all phone inputs app-wide) | ✅ |
 | Email receipts to customers (#29 — Resend via Vercel serverless function) | ✅ |
+| Markdown Scanner Mode (Inventory overlay, tier selector, audio+speech, audit_log, same-day session) | ✅ |
+| Bulk Tag Reprint (Admin → Data Management, filters, QZ Tray batch print, mark-as-printed) | ✅ |
+| Database Health cards (Admin → Data Management — photo storage + purge, record counts, missing photos) | ✅ |
 
 ### Known Gaps / Placeholders
 | Area | Status |
 |---|---|
-| Data Management tab in Admin | Placeholder (not implemented) |
+| Data Management tab in Admin | Built — Database Health + Bulk Tag Reprint + Danger Zone (contract delete) |
 | Consignor portal (public view) | `getPortalData()` exists in db.js but no public route confirmed |
 | Declined items (DB table exists, no UI) | Schema only |
 | Deployment / CI pipeline | Auto-deploys from GitHub via Vercel; no manual deploy needed |
@@ -798,3 +822,4 @@ _Use this section to record significant decisions, changes, or context from each
 | 2026-05-15 | Full three-tier user management system. Roles: admin/manager/staff (hierarchy; no row = admin/owner). New: Admin → Users tab (create, role change, suspend/reactivate, force logout, unlock, remove; last-admin protection). Add User form: display name + email + role + temp password + strength meter + welcome email via Resend + force_password_change flag. Forced first-login password change flow (/change-password). Profile page (/profile — display name edit, change password). Forgot password (/reset-password — Supabase email recovery). Login: lockout check (5 failures → 30-min lock), suspension check. api/auth-events.js public endpoint for lockout tracking. Permissions tab (role/feature matrix). User menu in topbar (display name, role badge, My Profile). schema.sql extended: user_roles + display_name, status, force_password_change, failed_attempts, locked_until, created_at, updated_at; default role → 'staff'. ACTION REQUIRED: re-run schema.sql in Supabase. |
 | 2026-05-15 | Bug fixes post user management launch. (1) Inline ✏️ name edit added to Admin → Users tab rows. (2) Profile save name: fixed upsert-without-role bug that demoted owner account to Staff — now uses update + conditional insert with role='admin'. (3) RoleContext now exposes setDisplayName() so nav bar updates immediately after name save without page reload. INCIDENT: first buggy upsert deployed briefly and demoted the owner account to Staff — recovered by manually setting role='admin' in Supabase Table Editor. Root cause documented in What Not To Do. |
 | 2026-05-20 | User ran `supabase/schema.sql` in Supabase SQL editor — user_roles table extensions (display_name, status, force_password_change, failed_attempts, locked_until, created_at, updated_at; default role → 'staff') now applied to production database. Removed schema re-run from Pending. |
+| 2026-05-20 | Three new features. (1) **Markdown Scanner Mode** rebuilt: Inventory toolbar 📉 button now opens overlay directly (no tier-picker modal). Tier selector lives inside overlay; scan input disabled until tier picked. Calculations always from `original_price` (falls back to `price` and saves it as `original_price` on first scan). New price rounded to whole dollar. Skip if `price` already equals computed value (mid tone + "Skip" speech + yellow). Success path: writes `price`, `original_price` (if null), `markdown_applied = true`, `needs_new_tag = false` (staff hand-updates physical tag); logs `audit_log` action `markdown` with from/to/original/tier/userId. Audio system added with `priceToWords()` helper — speaks new price as natural English ("one sixty", "seventy five", "one twenty five") via SpeechSynthesis at rate 0.9. Respects `intake_audio_enabled` localStorage mute. Session list persisted in `markdown.scanner.session` (date-scoped). "New Session" clears list but keeps tier. "Print Report" generates printable floor sheet. (2) **Bulk Tag Reprint** added to Admin → Data Management: lists items where `needs_new_tag = true`, filters by markdown-applied vs manually flagged + consignor + category, Print Selected / Print All via existing `printTags()` (ZPL/QZ Tray, max 40 batch). Post-print prompts "Mark as printed?" — if yes sets `tag_printed = true, needs_new_tag = false`. (3) **Database Health** cards added to Admin → Data Management: Photo Storage (count + MB estimate + purge old photos for sold/returned/pulled items, parses public URLs and removes from `item-photos` bucket); Database Summary (live counts per table, items grouped by status); Items Missing Photos (count + "View Items" → `/inventory?filter=nophotos`). Inventory page now reads `?filter=nophotos` URL param and applies a "Missing Photos" filter with a dismissable chip in the toolbar. Imports: Inventory.jsx now imports `useRole` + `logAudit`; Admin.jsx now imports `printTags`. Build clean, 171 tests pass. |
