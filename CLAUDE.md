@@ -37,9 +37,16 @@ Do this automatically without being asked.
 - Tech debt open: #19 (QZ Tray cert), #20–#21 (accessibility), #22 (archival)
 - Feature backlog open: #23, #32–#36 (#29 done; email issues #23 skipped; #24–#31, #38 done)
 
-## CLAUDE.md Fetch URL (jsDelivr CDN)
-The consignment-store repo is private. claude.ai fetches this file from the public claude-context repo:
+## How to Share With claude.ai
+
+The jsDelivr CDN fetch is unreliable for same-day updates (the CDN caches aggressively and purge requests are throttled). The most reliable way to give claude.ai today's context is to paste the file contents directly into the chat:
+
+- In VS Code: open `CLAUDE.md`, `Ctrl+A`, `Ctrl+C`, then paste into the claude.ai chat.
+
+The fetch URL remains as a backup for next-day reads, once the CDN has expired its old copy:
 `https://cdn.jsdelivr.net/gh/greghussey62/claude-context@main/CLAUDE.md`
+
+(The consignment-store repo is private, which is why claude.ai fetches from the public claude-context mirror.)
 
 ---
 
@@ -841,3 +848,4 @@ _Use this section to record significant decisions, changes, or context from each
 | 2026-05-20 | Three new features. (1) **Markdown Scanner Mode** rebuilt: Inventory toolbar 📉 button now opens overlay directly (no tier-picker modal). Tier selector lives inside overlay; scan input disabled until tier picked. Calculations always from `original_price` (falls back to `price` and saves it as `original_price` on first scan). New price rounded to whole dollar. Skip if `price` already equals computed value (mid tone + "Skip" speech + yellow). Success path: writes `price`, `original_price` (if null), `markdown_applied = true`, `needs_new_tag = false` (staff hand-updates physical tag); logs `audit_log` action `markdown` with from/to/original/tier/userId. Audio system added with `priceToWords()` helper — speaks new price as natural English ("one sixty", "seventy five", "one twenty five") via SpeechSynthesis at rate 0.9. Respects `intake_audio_enabled` localStorage mute. Session list persisted in `markdown.scanner.session` (date-scoped). "New Session" clears list but keeps tier. "Print Report" generates printable floor sheet. (2) **Bulk Tag Reprint** added to Admin → Data Management: lists items where `needs_new_tag = true`, filters by markdown-applied vs manually flagged + consignor + category, Print Selected / Print All via existing `printTags()` (ZPL/QZ Tray, max 40 batch). Post-print prompts "Mark as printed?" — if yes sets `tag_printed = true, needs_new_tag = false`. (3) **Database Health** cards added to Admin → Data Management: Photo Storage (count + MB estimate + purge old photos for sold/returned/pulled items, parses public URLs and removes from `item-photos` bucket); Database Summary (live counts per table, items grouped by status); Items Missing Photos (count + "View Items" → `/inventory?filter=nophotos`). Inventory page now reads `?filter=nophotos` URL param and applies a "Missing Photos" filter with a dismissable chip in the toolbar. Imports: Inventory.jsx now imports `useRole` + `logAudit`; Admin.jsx now imports `printTags`. Build clean, 171 tests pass. |
 | 2026-05-20 | Self-Update Protocol step 7 reworked to handle jsDelivr CDN throttling: if first purge returns `throttled`, wait 60s and retry once; if still throttled, add `CDN purge pending` to Pending section and move on (throttle resets overnight). No more unbounded retry loops. |
 | 2026-05-20 | Step 7 hardened again: escalating retry schedule (first attempt → 2-minute retry → 5-minute retry → defer to Pending), and every session log entry must now end with one of four explicit purge-result tokens (`finished` / `throttled — retried after 2m, finished` / `throttled — retried after 2m + 5m, finished` / `throttled — deferred to Pending`) so we can audit purge success after the fact. CDN purge: finished. |
+| 2026-05-20 | Added **How to Share With claude.ai** section at top of CLAUDE.md: copy/paste the file directly into the chat for same-day context (most reliable). CDN URL kept as backup for next-day reads since jsDelivr caches aggressively and purges are throttled. Replaces the old bare "CLAUDE.md Fetch URL" section. CDN purge: finished. |
