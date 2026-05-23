@@ -32,6 +32,7 @@ Backup fetch URL: `https://cdn.jsdelivr.net/gh/greghussey62/claude-context@main/
 - Move Anthropic API key to server-side before any public deployment
 - Tech debt open: #19 (QZ Tray cert), #20–#21 (accessibility), #22 (archival)
 - Feature backlog open: #23 (consignor sale email — skipped), #32–#36
+- **Tag template polish** — flip 180° so item_id is at hole end (top when hung) and DataMatrix at bottom; center text horizontally. Working version (ROT='B', Y_L=35) uses plain ^FD for id/type/brand and ^FB for desc/price only — do NOT add ^FB centering to all fields; that approach broke text rendering in B rotation (reverted twice). Start from working ZPL, adjust Y_L to center, flip portrait positions.
 
 ---
 
@@ -57,7 +58,7 @@ Key versions: react 19.2.5 · react-router-dom 7.14.2 · @supabase/supabase-js 2
 
 Runs on a physical retail counter. Devices:
 - **Barcode scanner** (Tera HW0002, USB keyboard-wedge — emits text + Enter): POS lookup, markdown scanning, reconciliation
-- **Thermal tag printer** (Zebra ZD421, 3"×1.5" labels): ZPL at 203 DPI via QZ Tray
+- **Thermal tag printer** (iDPRT iF4, 3"×1.5" die-cut hang-tag): ZPL at 203 DPI via QZ Tray
 - **Receipt printer** (Epson TM-T20III): ESC/POS, 42-char wide, via QZ Tray
 - **Cash drawer** (APG Vasario): RJ11 off the Epson — opens on `CMD:CASH` only
 - **Counter PC:** Beelink Mini S12 Pro · **Staff monitor:** MUNBYN 12" touchscreen (video + touch over one HDMI)
@@ -258,3 +259,4 @@ Keep entries to ONE LINE. Older detail collapsed intentionally — full history 
 | 2026-05-21 | Decoupled Markdown Scanner reporting from per-device localStorage. Print Report now queries audit_log (getMarkdownAuditReport in db.js): date picker, All Stations / My Scans Only filter, groups by user, active items only, prices from audit log details. Added details.markdown_applied_by_name for durable attribution. Name resolution falls back through stored name → user_roles → current user's email prefix → 'Admin' (consistent with RoleContext for owner with no role row). On-screen session list kept as cosmetic scratchpad; New Session still clears it. 171 tests pass. CDN purge: finished (×2). |
 | 2026-05-23 | System-wide field-naming fix (pre-launch, data disposable → drop-and-recreate). Renamed `items`/`sales` columns: old `color`→`description` (free-text detail), old `description`(held the type)→`item_type`. Updated `complete_pos_sale` RPC in lockstep. Removed AIIntake.jsx swap (AI item_type/description now flow straight through). Standardized all UI labels to "Item Type"/"Description"; eliminated every "Color"/"Category" label. Left `item_types.category_group` taxonomy untouched. ~20 files swept; db.test.js gains no-swap assertion; 171 tests pass; live round-trip verified. Gotcha: `CREATE TABLE IF NOT EXISTS` skips existing tables — must `DROP … CASCADE` first. Follow-up: reverted `declined_items.item_type`→`description` (stores free-text, not a type; label was already "Description"). CDN purge: finished. |
 | 2026-05-23 (2) | iDPRT iF4 hang-tag template rewrite (tagPrinter.js). New portrait layout: item_id (large) → item_type → brand → description (2-line ^FB word-wrap) → price/size row → DataMatrix (^BX, encodes item_id, centered). All content rotated via single ROT constant. First print: ROT='R' printed upside-down → corrected to ROT='B' (270°CW); physically confirmed correct orientation. Fixed pre-existing Admin Bulk Tag Reprint query selecting deleted `color` column + missing `item_type`. 171 tests pass. CDN purge: finished. |
+| 2026-05-23 (3) | Confirmed working iF4 tag template (all fields print + DataMatrix scans). Reverted uncommitted broken changes left by prior stuck session. Remaining TO DO: flip 180° so item_id is at hole end, center text. Hardware doc corrected: Zebra ZD421 → iDPRT iF4. CDN purge: [pending] |
