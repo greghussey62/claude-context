@@ -29,6 +29,7 @@ Paste this file's contents directly into the chat for same-day context — the j
 Backup fetch URL: `https://cdn.jsdelivr.net/gh/greghussey62/claude-context@main/CLAUDE.md` (consignment-store repo is private; claude.ai fetches the public claude-context mirror.)
 
 ## Pending From Last Session
+- Field-rename live check: tables `items`/`sales`/`declined_items` were dropped & recreated 2026-05-23 (data was disposable, being re-entered). Run `public/field-rename-test.html` to confirm AI intake lands `item_type`/`description` un-swapped in the live DB (build/tests already pass; live round-trip not yet clicked through).
 - Move Anthropic API key to server-side before any public deployment
 - Tech debt open: #19 (QZ Tray cert), #20–#21 (accessibility), #22 (archival)
 - Feature backlog open: #23 (consignor sale email — skipped), #32–#36
@@ -159,14 +160,14 @@ Auth · Contracts CRUD · Items (AI + manual add, edit, status) · AI Intake (vo
 
 Tables (purpose):
 - `contracts` — consignor agreements (`contract_num` serial, `split_pct`, status)
-- `items` — inventory; PK `item_id` `{contract_num}-{seq:02d}`; `price`/`original_price`/`sold_price`, `status`, `markdown_applied`, `needs_new_tag`, `photos[]`, `base_amount`
-- `sales` — line items (one per item sold/returned; negative `sale_price` for returns); `listed_price` keeps original tag price
+- `items` — inventory; PK `item_id` `{contract_num}-{seq:02d}`; `item_type` (the kind, e.g. "Dress") + `description` (free-text detail, e.g. "black floral"), `brand`, `size`, `price`/`original_price`/`sold_price`, `status`, `markdown_applied`, `needs_new_tag`, `photos[]`, `base_amount`. (Renamed 2026-05-23: old `color` → `description`; old `description` held the type → now `item_type`. No more swap.)
+- `sales` — line items (one per item sold/returned; negative `sale_price` for returns); carries `item_type` + `description` snapshot; `listed_price` keeps original tag price
 - `transactions` — receipt groupings; `receipt_number` `R-{seq}`; split-tender fields `payment_method_2`/`amount_tendered_2`
 - `payouts` — check runs (check#, pickup deadline, void/reissue tracking)
 - `payout_batches` — pickup windows per contract
 - `layaways` — holds; `items`/`payments` jsonb
 - `item_types` — category vocab (~150) · `designers` — brand names + phonetic `aliases` for AI matching
-- `declined_items` — schema only, no UI
+- `declined_items` — small UI in Contracts (add/list); column renamed `description` → `item_type` (2026-05-23) for table consistency, though it stores free-text; on-screen label still reads "Description"
 - `audit_log` — immutable change log (price/status/payout/delete/markdown); `details` jsonb
 - `photo_upload_sessions` — QR upload tokens (15-min expiry; anon SELECT if unexpired)
 - `user_active_item` — Camera Mode active item per user (own-row RLS)
@@ -202,7 +203,7 @@ Sequence `receipt_seq` (1001+). Indexes on `items(status/contract_id/contract_nu
 
 **Markdown Scanner reporting:** Scanning is pure DB input (audit_log is the system of record). The on-screen session list (`marked` state / `localStorage` `markdown.scanner.session`) is a cosmetic per-device scratchpad only. "Print Report" queries `getMarkdownAuditReport(date)` in db.js — filters `audit_log` by `action='markdown'` + date, joins `items` (active only), groups by user. Name resolution: `details.markdown_applied_by_name` (durable, written on each scan) → `user_roles.display_name` → current user's `email.split('@')[0]` (matches RoleContext for owner-admin who has no role row) → `'Admin'`. Date picker + All Stations / My Scans Only filter. Runs from any machine. Note: batch markdown path (Reports → Run Markdown) does NOT write audit_log, so the report covers scanner activity only.
 
-**AI Intake:** system prompt rebuilt when item_types/designers change; in-memory cache refresh at 4 min (within 5-min prompt-cache TTL). Call `invalidateListCache()` from Admin after vocab edits. Voice = Web Speech API (Chrome/Edge only).
+**AI Intake:** system prompt rebuilt when item_types/designers change; in-memory cache refresh at 4 min (within 5-min prompt-cache TTL). Call `invalidateListCache()` from Admin after vocab edits. Voice = Web Speech API (Chrome/Edge only). AI returns `item_type` + `description`; these flow **straight through** to the matching `items` columns — `AIIntake.jsx` no longer swaps them (the old `item_type→color`, `description→` bug is gone, see What Not To Do).
 
 **IDs:** `contract_num` int ~3000+ · `item_id` `{contract_num}-{seq:02d}` · `receipt_number` `R-{seq}` (1001+) · `layaway_ref` human-readable.
 
@@ -216,6 +217,7 @@ Sequence `receipt_seq` (1001+). Indexes on `items(status/contract_id/contract_nu
 - **Don't move Supabase queries out of `src/lib/db.js`** into components.
 - **Don't expose the Anthropic key publicly / deploy to a public URL** without moving AI calls server-side (currently `VITE_`-exposed, visible in the bundle).
 - **Don't change `item_id` format** `{contract_num}-{seq:02d}` — it's barcoded on physical tags.
+- **Don't reintroduce the item_type/description swap.** Columns are now correctly named: `items.item_type` holds the kind ("Dress"), `items.description` holds free-text detail ("black floral"). AI `item_type`→`item_type`, AI `description`→`description`, straight through. The pre-2026-05-23 code stored the type in `description` and the detail in `color`, and `AIIntake.jsx` swapped on the way in — that's all gone. `db.test.js` asserts the no-swap mapping.
 - **Don't change ZPL tag format** without checking physical dims (3"×1.5", 203 DPI = 609×304 dots).
 - **Don't edit `supabase/schema.sql` and forget to tell the user to re-run it** in the SQL editor.
 - **Don't use `git add .` / `git add -A`** — `.env.local` has real keys.
@@ -255,3 +257,4 @@ Keep entries to ONE LINE. Older detail collapsed intentionally — full history 
 | 2026-05-15 | Vercel env vars confirmed active (email receipts + Users tab live). Documented store site + future domain work. Full three-tier user management (admin/manager/staff, CRUD, lockout, suspend, force password change, /change-password, /profile, /reset-password, Permissions tab). schema.sql extended (user_roles). INCIDENT: buggy upsert demoted owner to Staff → recovered manually; root cause in What Not To Do. |
 | 2026-05-20 | Ran schema.sql in prod (user_roles extensions applied). Three features: Markdown Scanner Mode (Inventory overlay, tier selector, audio+speech via priceToWords(), audit_log, date-scoped session), Bulk Tag Reprint (Admin → Data Management), Database Health cards (Admin → Data Management). 171 tests pass. Reworked Self-Update step 7 (escalating CDN-purge retry + result tokens). Added "How to Share With claude.ai". Slimmed CLAUDE.md back under 40k (collapsed schema dump + old session log). Admin tabs grouped into five labeled sections. CDN purge: finished. |
 | 2026-05-21 | Decoupled Markdown Scanner reporting from per-device localStorage. Print Report now queries audit_log (getMarkdownAuditReport in db.js): date picker, All Stations / My Scans Only filter, groups by user, active items only, prices from audit log details. Added details.markdown_applied_by_name for durable attribution. Name resolution falls back through stored name → user_roles → current user's email prefix → 'Admin' (consistent with RoleContext for owner with no role row). On-screen session list kept as cosmetic scratchpad; New Session still clears it. 171 tests pass. CDN purge: finished (×2). |
+| 2026-05-23 | System-wide field-naming fix (pre-launch, data disposable → drop-and-recreate). Renamed `items`/`sales` columns: old `color`→`description` (free-text detail), old `description`(held the type)→`item_type`; `declined_items.description`→`item_type`. Updated `complete_pos_sale` RPC (params + insert) in lockstep with db.js. Removed the AIIntake.jsx swap (AI item_type/description now flow straight through to matching columns). Standardized all UI labels to "Item Type"/"Description"; eliminated every "Color" label and stray "Category" label (POS, EditItemModal, ItemDetail, Inventory/Tags/Statements/Payout/Contracts tables+print HTML, CSV headers, Admin Bulk Tag Reprint filter→itemType, SalesHistory filter→item_type, Help copy). Left `item_types.category_group` taxonomy untouched. ~20 files swept. db.test.js gains a no-swap assertion; 171 tests pass; build clean; dev server boots. User dropped+recreated the 3 tables and re-ran schema.sql. Live round-trip verification deferred to public/field-rename-test.html (in Pending). CDN purge: finished. |
