@@ -30,8 +30,9 @@ Backup fetch URL: `https://cdn.jsdelivr.net/gh/greghussey62/claude-context@main/
 
 ## Pending From Last Session
 - Move Anthropic API key to server-side before any public deployment
-- Tech debt open: #19 (QZ Tray cert), #20–#21 (accessibility), #22 (archival)
+- Tech debt open: #20–#21 (accessibility), #22 (archival). (#19 QZ Tray cert — DONE: real RSA+SHA-512 signing, see Hardware + Session Log 2026-06-16.)
 - Feature backlog open: #23 (consignor sale email — skipped), #32–#36
+- **Shopify Drive intake (phase 1 shipped) — before it works, two manual steps remain:** (1) re-run `supabase/schema.sql` in the hosted SQL editor to create `shopify_photos`; (2) set `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_SERVICE_ACCOUNT_KEY`, `DRIVE_INTAKE_FOLDER_ID` in Vercel + share the Drive inbox folder with the service-account email. Next block: "Import photos" UI.
 - **Tag text alignment:** text still prints right-justified in read-orientation. Left-justify approach attempted (Y_L flip + ^FB L/R swap) but reverted — the axis behaviour wasn't what was expected. Resume next session with fresh diagnostic prints.
 - **Tag PT_ID=30 centering:** physical print pending to confirm item_id looks balanced in the above-hole strip.
 
@@ -67,7 +68,7 @@ Runs on a physical retail counter. Devices:
 - **Back office:** Brother MFC-L2820DW laser
 - **Phone camera:** QR-based photo uploads (mobile browser, no app)
 
-**QZ Tray** is a local desktop app (`localhost:8181`) bridging browser → raw printer access. Must be running. Printer names in `localStorage` (set via Admin). Dry-run mode previews without hardware.
+**QZ Tray** is a local desktop app (`localhost:8181`) bridging browser → raw printer access. Must be running. Printer names in `localStorage` (set via Admin). Dry-run mode previews without hardware. **Signed requests (no "untrusted website" popup):** `tagPrinter.js setupSecurity()` (shared by tag + receipt printers) does real **RSA+SHA-512** signing — cert promise loads PUBLIC `/digital-certificate.txt` (`public/`), `setSignatureAlgorithm('SHA512')`, sig promise POSTs to serverless **`api/qz-sign.js`** which signs with **`QZ_PRIVATE_KEY`** env var (key never in client/git). **⚑ One-time:** set `QZ_PRIVATE_KEY` in Vercel + install the public cert as **`override.crt`** in QZ Tray's `ssl/` folder on each PC (e.g. `C:\Program Files\QZ Tray\demo\ssl\override.crt`) — popup only clears on PCs that have it. Same pattern as the auto-shop app.
 
 **Web presence:** store site `www.samirasupsacleboutique.com`. Future: verify domain in Resend for branded sender (`receipts@samirasupsacleboutique.com`); point `app.samirasupsacleboutique.com` → Vercel.
 
@@ -146,9 +147,10 @@ Auth · Contracts CRUD · Items (AI + manual add, edit, status) · AI Intake (vo
 - **Declined items:** DB table exists, no UI
 - **Consignor sale email notifications:** skipped (#23), needs Resend wired to sale events
 - **Appointment confirmation email:** Resend infra in place, needs wiring to appointment insert
+- **Shopify module — Drive photo intake (phase 1):** backend shipped (`shopify_photos` table + `api/drive-intake.js`), isolated from the QR/Realtime flow. No UI yet ("Import photos" button = next block); needs schema re-run + Vercel Google env vars before it works (see Pending).
 - **Shopify product sync (#33)** + **AI Shopify descriptions (#34):** not built
 - **Offline POS mode:** deferred (#16 closed)
-- **Accessibility (#20, #21), data archival (#22), QZ Tray cert (#19):** open issues
+- **Accessibility (#20, #21), data archival (#22):** open issues. (#19 QZ Tray cert — DONE: real signing.)
 
 ---
 
@@ -184,6 +186,7 @@ Tables (purpose):
 - `shifts` — end-of-day cash reconciliation
 - `store_credit` + `store_credit_transactions` — balances + ledger
 - `appointment_settings` (single row, anon SELECT) + `intake_appointments` (anon INSERT)
+- `shopify_photos` — Shopify module Drive-intake photos (one row per imported photo; `drive_file_id` unique = dedupe key, `item_id` FK, `photo_seq`, `storage_path`, `status` imported/approved/rejected). **Isolated from the QR/Realtime photo flow** — does not touch `items.photos`.
 
 Sequence `receipt_seq` (1001+). Indexes on `items(status/contract_id/contract_num)`, `sales(contract_id/sale_date/transaction_id)`.
 
@@ -199,7 +202,7 @@ Sequence `receipt_seq` (1001+). Indexes on `items(status/contract_id/contract_nu
 
 **Phone:** all inputs use `formatPhone()` from `src/lib/phone.js` → `(xxx) xxx-xxxx`, caps 10 digits. `isValidPhone()` before save, `digitsOnly()` for DB queries. Never store raw input.
 
-**Vercel API routes:** `api/send-receipt.js` (Resend, `RESEND_API_KEY`) · `api/admin-users.js` (Supabase Admin API, `SUPABASE_SERVICE_ROLE_KEY`) · `api/auth-events.js` (public lockout tracking). First two validate caller JWT; server-side keys never reach browser.
+**Vercel API routes:** `api/send-receipt.js` (Resend, `RESEND_API_KEY`) · `api/admin-users.js` (Supabase Admin API, `SUPABASE_SERVICE_ROLE_KEY`) · `api/auth-events.js` (public lockout tracking) · `api/qz-sign.js` (QZ Tray request signing, `QZ_PRIVATE_KEY`) · `api/drive-intake.js` (Shopify module: Drive photo intake — `GOOGLE_SERVICE_ACCOUNT_EMAIL`/`GOOGLE_SERVICE_ACCOUNT_KEY`/`DRIVE_INTAKE_FOLDER_ID`, `SUPABASE_SERVICE_ROLE_KEY`; validates caller JWT, compresses with `sharp`, uploads to Storage, moves Drive originals to a `processed/` subfolder). `send-receipt`/`admin-users`/`drive-intake` validate caller JWT; server-side keys never reach browser.
 
 **Data access:** all Supabase queries in `src/lib/db.js` (`getX/createX/updateX/deleteX`), pages import named functions — never call `supabase` directly (except Realtime + a few inline selects).
 
@@ -273,3 +276,5 @@ Keep entries to ONE LINE. Older detail collapsed intentionally — full history 
 | 2026-05-26 | No code changes. ^POI physical test result still pending — report at next session start. CDN purge: finished. |
 | 2026-05-28 | Tag template polish sprint: ^POI confirmed working on iF4. Font hierarchy (FH_ID 24, FH_TYPE 44, FH_BRAND 40, FH_DESC 26, FH_PRICE 52) physically verified. Circled size in price row (^FO415,15^GC70,3,B) physically verified. item_id moved to above-hole strip (PT_ID=30, PT_TYPE=166 hardcoded). Price now whole-dollar (Math.round, no cents). Left-justify ongoing — attempted Y_L flip reverted. CDN purge: finished. |
 | 2026-06-12 | Password reset verified end-to-end in production — added https://consignment-store-psi.vercel.app/reset-password (+ localhost:5173) to Supabase Auth → URL Configuration → Redirect URLs (dashboard step missed at the 05-15 build, prod reset links were silently failing until now); live test passed (email → link → new password → logged in). Added 🔑 Change Password shortcut to the topbar user menu → /profile. CDN purge: finished. |
+| 2026-06-16 | QZ Tray request signing (#19 DONE) — silent/trusted printing, no "untrusted website" popup. Replaced empty cert/sig promises in `tagPrinter.js setupSecurity()` (shared by tag + receipt printers) with real **RSA+SHA-512**: cert promise loads PUBLIC `/digital-certificate.txt` (`public/`), `setSignatureAlgorithm('SHA512')`, sig promise POSTs to new serverless **`api/qz-sign.js`** signing with **`QZ_PRIVATE_KEY`** env var (key never in client/git; `.gitignore` blocks `*.pem`). Same pattern as the auto-shop app. Cert RSA-2048, valid→2036; SHA512 sign/verify roundtrip verified. **⚑ Set `QZ_PRIVATE_KEY` in Vercel + install `override.crt` on each PC** (popup only clears on PCs with it). Build clean. |
+| 2026-07-13 | Shopify module **phase 1** — Google Drive photo intake backend (commit `b5b6e47`). New `shopify_photos` table (schema.sql: `drive_file_id` unique dedupe, `item_id` FK, `photo_seq`, `storage_path`, `status`, RLS auth_all). New serverless **`api/drive-intake.js`** (send-receipt.js pattern): validates caller Supabase JWT, service-account auth via `google-auth-library`, lists the one-item Drive inbox folder, skips already-imported file IDs, item-exists check BEFORE any Drive/Storage work (typo'd item_id → clean 404, zero side effects), compresses server-side with **sharp** (max 1200px, JPEG q82), uploads to `item-photos` at `shopify/{item_id}/{item_id}-{seq}.jpg` (seq continues from highest existing for that item), inserts row, then moves Drive original into a `processed/` subfolder (created on demand). Per-file failures isolated + reported, no partial rollback. **Isolated from the QR/Realtime photo flow** — does not touch `photos.js`/`items.photos`. Added deps: `google-auth-library`, `sharp`. No UI (next block = "Import photos" button). **⚑ Before it works: re-run schema.sql (create `shopify_photos`) + set `GOOGLE_SERVICE_ACCOUNT_EMAIL`/`GOOGLE_SERVICE_ACCOUNT_KEY`/`DRIVE_INTAKE_FOLDER_ID` in Vercel + share Drive folder with the SA email.** CDN purge: finished. |
